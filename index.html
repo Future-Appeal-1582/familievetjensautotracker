@@ -34,6 +34,7 @@
   .car-card .car-km { font-size: 1.2rem; font-weight: 800; color: #2d3748; }
   .car-card .car-km span { font-size: 0.75rem; font-weight: 500; color: #718096; }
   .car-card .car-trips { font-size: 0.78rem; color: #718096; margin-top: 4px; }
+  .car-unknown-km { font-size: 0.75rem; color: #c05621; background: #fffaf0; border: 1px solid #fbd38d; border-radius: 6px; padding: 2px 7px; margin-top: 6px; display: inline-block; font-weight: 600; }
 
   /* ── Forms ── */
   .form-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
@@ -460,40 +461,108 @@ function showTab(tab) {
 }
 window.showTab = showTab;
 
+// ─── INVOER TOGGLE ───────────────────────────────────────────────────────────
+let invoerMode = 'teller'; // 'teller' of 'gereden'
+
+function switchInvoer(mode) {
+  invoerMode = mode;
+  document.getElementById('invoer-teller').style.display  = mode === 'teller'  ? 'block' : 'none';
+  document.getElementById('invoer-gereden').style.display = mode === 'gereden' ? 'block' : 'none';
+  document.getElementById('btn-teller').className  = 'btn ' + (mode === 'teller'  ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('btn-gereden').className = 'btn ' + (mode === 'gereden' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('btn-teller').style.flex  = '1';
+  document.getElementById('btn-teller').style.fontSize  = '0.82rem';
+  document.getElementById('btn-gereden').style.flex = '1';
+  document.getElementById('btn-gereden').style.fontSize = '0.82rem';
+}
+window.switchInvoer = switchInvoer;
+
+function showKmPreview() {
+  const begin = parseInt(document.getElementById('f-km-begin')?.value);
+  const eind  = parseInt(document.getElementById('f-km-eind')?.value);
+  const el    = document.getElementById('km-preview-teller');
+  if (!el) return;
+  if (!isNaN(begin) && !isNaN(eind) && eind > begin) {
+    el.textContent = `✅ ${fmt(eind - begin)} km gereden · vergoeding: ${fmtEur((eind - begin) * state.tarief)}`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+window.showKmPreview = showKmPreview;
+
+function showKmPreviewGereden() {
+  const km  = parseInt(document.getElementById('f-km-gereden')?.value);
+  const el  = document.getElementById('km-preview-gereden');
+  const carId = parseInt(document.getElementById('f-car')?.value);
+  const car   = getCarById(carId);
+  if (!el || !car) return;
+  if (!isNaN(km) && km > 0) {
+    const eindstand = car.currentKm + km;
+    el.innerHTML = `Eindstand wordt: <strong>${fmt(eindstand)} km</strong><br>Vergoeding: <strong>${fmtEur(km * state.tarief)}</strong>`;
+  } else {
+    el.textContent = '';
+  }
+}
+window.showKmPreviewGereden = showKmPreviewGereden;
+
 // ─── TRIP ACTIONS ─────────────────────────────────────────────────────────────
 function submitAddTrip() {
   const carId    = parseInt(document.getElementById('f-car').value);
   const driverId = parseInt(document.getElementById('f-driver').value);
   const dateVal  = document.getElementById('f-date').value;
-  const kmVal    = parseInt(document.getElementById('f-km').value);
   const dest     = document.getElementById('f-dest').value.trim();
   const goal     = document.getElementById('f-goal').value;
 
-  if (!dateVal)        { alert('Vul een datum in.'); return; }
-  if (isNaN(kmVal))    { alert('Vul een geldige km-stand in.'); return; }
-  if (!dest)           { alert('Vul een bestemming in.'); return; }
+  if (!dateVal) { alert('Vul een datum in.'); return; }
+  if (!dest)    { alert('Vul een bestemming in.'); return; }
 
   const car = getCarById(carId);
   if (!car) { alert('Ongeldige auto geselecteerd.'); return; }
 
-  const prevKm = car.currentKm;
-  if (kmVal < prevKm) { alert(`De km-stand moet hoger zijn dan ${fmt(prevKm)} km.`); return; }
+  let beginKmVal, eindKmVal;
 
-  const diff = kmVal - prevKm;
+  if (invoerMode === 'teller') {
+    beginKmVal = parseInt(document.getElementById('f-km-begin').value);
+    eindKmVal  = parseInt(document.getElementById('f-km-eind').value);
+    if (isNaN(beginKmVal))       { alert('Vul een geldige beginstand in.'); return; }
+    if (isNaN(eindKmVal))        { alert('Vul een geldige eindstand in.'); return; }
+    if (eindKmVal <= beginKmVal) { alert('De eindstand moet hoger zijn dan de beginstand.'); return; }
+  } else {
+    const gereden = parseInt(document.getElementById('f-km-gereden').value);
+    if (isNaN(gereden) || gereden <= 0) { alert('Vul een geldig aantal gereden km in.'); return; }
+    beginKmVal = car.currentKm;
+    eindKmVal  = car.currentKm + gereden;
+  }
+
+  const diff = eindKmVal - beginKmVal;
   const trip = {
     id: state.nextTripId++,
-    carId, driverId, date: dateVal, km: kmVal, prevKm, diff,
+    carId, driverId, date: dateVal,
+    km: eindKmVal, prevKm: beginKmVal, diff,
     vergoeding: +(diff * state.tarief).toFixed(2),
     tariefSnapshot: state.tarief,
     dest, goal, checked: false,
   };
 
-  car.currentKm = kmVal;
+  if (eindKmVal > car.currentKm) car.currentKm = eindKmVal;
   state.trips.unshift(trip);
   pushToFirebase();
   showTab('ritten');
 }
 window.submitAddTrip = submitAddTrip;
+
+function prefillCarKm() {
+  const carId = parseInt(document.getElementById('f-car')?.value);
+  const car   = getCarById(carId);
+  const inp   = document.getElementById('f-km-begin');
+  const lbl   = document.getElementById('last-km-label');
+  if (car) {
+    if (inp) inp.value = car.currentKm || 0;
+    if (lbl) lbl.textContent = fmt(car.currentKm || 0);
+  }
+}
+window.prefillCarKm = prefillCarKm;
 
 function deleteTrip(id) {
   if (!confirm('Rit verwijderen?')) return;
@@ -597,11 +666,32 @@ function renderOverview() {
 
   const carCards = state.cars.map(c => {
     const ct = state.trips.filter(t=>t.carId===c.id);
+    const registeredKm = ct.reduce((a,t)=>a+t.diff,0);
+    const unknownKm = Math.max(0, c.currentKm - (ct.length > 0 ? ct[0].km : c.currentKm) + registeredKm - registeredKm);
+    // Bereken onbekende km: verschil tussen huidige tellerstand en som van alle ritten voor deze auto
+    const highestRegistered = ct.length > 0 ? Math.max(...ct.map(t=>t.km)) : (c.currentKm);
+    const unaccounted = Math.max(0, c.currentKm - highestRegistered + ct.reduce((a,t) => {
+      // tel gaten op tussen opeenvolgende ritten gesorteerd op eindstand
+      return a;
+    }, 0));
+    // Simpelere berekening: som van alle gaten (beginstand rit N > eindstand rit N-1)
+    const sortedTrips = [...ct].sort((a,b)=>a.km-b.km);
+    let gaps = 0;
+    for (let i = 1; i < sortedTrips.length; i++) {
+      if (sortedTrips[i].prevKm > sortedTrips[i-1].km) {
+        gaps += sortedTrips[i].prevKm - sortedTrips[i-1].km;
+      }
+    }
+    const unknownKmFinal = gaps;
+    const unknownBadge = unknownKmFinal > 0
+      ? `<div class="car-unknown-km">⚠️ ${fmt(unknownKmFinal)} km niet geregistreerd</div>`
+      : '';
     return `<div class="car-card" style="border-left-color:${carColor(c.id)};" onclick="showTab('toevoegen')">
       <div class="car-icon">${c.icon}</div>
       <div class="car-name">${c.name}</div>
       <div class="car-km">${fmt(c.currentKm)} <span>km stand</span></div>
       <div class="car-trips">${ct.length} rit${ct.length!==1?'ten':''}</div>
+      ${unknownBadge}
     </div>`;
   }).join('');
 
@@ -628,20 +718,20 @@ function renderAdd() {
   if (!state.cars.length)    return `<div class="form-card"><div class="empty-state"><div class="es-icon">🚗</div>Voeg eerst een auto toe in <strong>Instellingen</strong>.</div><button class="btn btn-primary btn-block" onclick="showTab('instellingen')">Ga naar Instellingen</button></div>`;
   if (!state.drivers.length) return `<div class="form-card"><div class="empty-state"><div class="es-icon">👤</div>Voeg eerst een bestuurder toe in <strong>Instellingen</strong>.</div><button class="btn btn-primary btn-block" onclick="showTab('instellingen')">Ga naar Instellingen</button></div>`;
 
+  const firstCar       = state.cars[0];
+  const defaultBeginKm = firstCar ? (firstCar.currentKm || 0) : 0;
+  const isTeller       = invoerMode === 'teller';
+
   return `<div class="form-card">
     <h2>➕ Nieuwe rit toevoegen</h2>
     <div class="form-grid">
       <div class="form-group">
         <label>Auto</label>
-        <select id="f-car">${state.cars.map(c=>`<option value="${c.id}">${c.icon} ${c.name} (${fmt(c.currentKm)} km)</option>`).join('')}</select>
+        <select id="f-car" onchange="prefillCarKm()">${state.cars.map(c=>`<option value="${c.id}">${c.icon} ${c.name} (${fmt(c.currentKm)} km)</option>`).join('')}</select>
       </div>
       <div class="form-group">
         <label>Datum</label>
         <input type="date" id="f-date" value="${today()}">
-      </div>
-      <div class="form-group">
-        <label>Nieuwe km-stand</label>
-        <input type="number" id="f-km" placeholder="bijv. 45230" min="0">
       </div>
       <div class="form-group">
         <label>Bestuurder</label>
@@ -659,8 +749,46 @@ function renderAdd() {
         </select>
       </div>
     </div>
+
+    <!-- Invoermethode toggle -->
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button id="btn-teller"  class="btn ${isTeller?'btn-primary':'btn-ghost'}" style="flex:1;font-size:0.82rem;" onclick="switchInvoer('teller')">📟 Km-teller (begin + eind)</button>
+      <button id="btn-gereden" class="btn ${!isTeller?'btn-primary':'btn-ghost'}" style="flex:1;font-size:0.82rem;" onclick="switchInvoer('gereden')">🛣️ Gereden km invoeren</button>
+    </div>
+
+    <!-- Teller invoer -->
+    <div id="invoer-teller" style="margin-top:12px;${isTeller?'':'display:none;'}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Beginstand (km-teller)</label>
+          <input type="number" id="f-km-begin" placeholder="bijv. 45187" min="0" value="${defaultBeginKm}" oninput="showKmPreview()">
+        </div>
+        <div class="form-group">
+          <label>Eindstand (km-teller)</label>
+          <input type="number" id="f-km-eind" placeholder="bijv. 45230" min="0" oninput="showKmPreview()">
+        </div>
+      </div>
+      <div id="km-preview-teller" style="font-size:0.8rem;color:#276749;margin-top:6px;font-weight:600;min-height:18px;"></div>
+    </div>
+
+    <!-- Gereden km invoer -->
+    <div id="invoer-gereden" style="margin-top:12px;${!isTeller?'':'display:none;'}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Aantal gereden km</label>
+          <input type="number" id="f-km-gereden" placeholder="bijv. 43" min="1" oninput="showKmPreviewGereden()">
+        </div>
+        <div class="form-group" style="justify-content:flex-end;">
+          <div id="km-preview-gereden" style="font-size:0.8rem;color:#718096;padding-top:26px;"></div>
+        </div>
+      </div>
+      <div style="margin-top:6px;padding:8px 12px;background:#fff5f5;border-radius:8px;font-size:0.78rem;color:#c53030;border:1px solid #fed7d7;">
+        ⚠️ Beginstand wordt automatisch de laatste bekende stand: <strong>${fmt(defaultBeginKm)} km</strong>. Als er een rit vergeten is, gebruik dan de km-teller methode.
+      </div>
+    </div>
+
     <div style="margin-top:12px;padding:10px 12px;background:#fffbeb;border-radius:8px;font-size:0.82rem;color:#744210;border:1px solid #f6e05e;">
-      💡 Huidig vergoedingstarief: <strong>${fmtEur(state.tarief)}/km</strong> ·
+      💡 Tarief: <strong>${fmtEur(state.tarief)}/km</strong> ·
       <a href="#" onclick="showTab('instellingen');return false;" style="color:#744210;font-weight:700;">Aanpassen in Instellingen</a>
     </div>
     <button class="btn btn-primary btn-block" onclick="submitAddTrip()">✅ Rit opslaan</button>
