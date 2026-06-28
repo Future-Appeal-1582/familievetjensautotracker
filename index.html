@@ -262,9 +262,12 @@
     <p class="subtitle" id="betaling-subtitle"></p>
     <div id="betaling-content"></div>
     <div style="margin-top:16px;padding:10px 12px;background:#f0fff4;border-radius:8px;font-size:0.78rem;color:#276749;border:1px solid #c6f6d5;">
-      ✅ Alleen gecheckte ritten zijn meegenomen. Markeer ritten als gecontroleerd via "Alle ritten".
+      ✅ Alleen gecheckte ritten met vergoeding zijn meegenomen.
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="sluitBetalingPopup()">Sluiten</button>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="slaHuidigOverzichtOp()">📸 Overzicht opslaan</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="sluitBetalingPopup()">Sluiten</button>
+    </div>
   </div>
 </div>
 
@@ -329,8 +332,8 @@ const state = {
   ritten_view: 'lijst',  // 'lijst' of 'kalender'
   favBestemmingen: [],
   categories: [
-    { id: 'prive', label: 'Privé', icon: '🏠', color: '#ebf8ff', textColor: '#2b6cb0' },
-    { id: 'werk',  label: 'Werk',  icon: '💼', color: '#f0fff4', textColor: '#276749' },
+    { id: 'prive', label: 'Privé', icon: '🏠', color: '#ebf8ff', textColor: '#2b6cb0', vergoeding: true },
+    { id: 'werk',  label: 'Werk',  icon: '💼', color: '#f0fff4', textColor: '#276749', vergoeding: true },
   ],
   nextCatId: 3,
   terugkerendeRitten: [],
@@ -620,10 +623,13 @@ function submitAddTrip() {
     km: eindKmVal, prevKm: beginKmVal, diff,
     vergoeding: +(diff * state.tarief).toFixed(2),
     tariefSnapshot: state.tarief,
-    dest, goal, notitie, route, checked: false,
+    dest, goal, notitie, route, checked: false, teltMee: true,
   };
 
   if (eindKmVal > car.currentKm) car.currentKm = eindKmVal;
+  // Stel teltMee in op basis van categorie standaard
+  const catVoorRit = state.categories.find(c => c.id === goal);
+  if (catVoorRit && catVoorRit.vergoeding === false) trip.teltMee = false;
   state.trips.unshift(trip);
   if (dest) slaFavBestOp(dest);
   pushToFirebase();
@@ -809,6 +815,15 @@ function toggleChecked(id) {
 }
 window.toggleChecked = toggleChecked;
 
+function toggleTeltMee(id) {
+  const trip = state.trips.find(t => t.id === id);
+  if (!trip) return;
+  trip.teltMee = !trip.teltMee;
+  pushToFirebase();
+  render();
+}
+window.toggleTeltMee = toggleTeltMee;
+
 // ─── CAR ACTIONS ─────────────────────────────────────────────────────────────
 function addCar() {
   const icons = ['🚗','🚙','🛻','🚕','🚓','🏎️','🚌','🚐'];
@@ -866,7 +881,7 @@ window.applyTarief = applyTarief;
 // ── Categorie functies ──
 function addCat() {
   const id = 'cat_' + state.nextCatId++;
-  state.categories.push({ id, label: 'Nieuw', icon: '🏷️', color: '#f7fafc', textColor: '#4a5568' });
+  state.categories.push({ id, label: 'Nieuw', icon: '🏷️', color: '#f7fafc', textColor: '#4a5568', vergoeding: true });
   pushToFirebase(); render();
 }
 window.addCat = addCat;
@@ -1162,7 +1177,9 @@ function renderTripItem(t) {
     <div class="t-status">${statusBadge}</div>
     <div class="t-km">
       <div class="km-diff">+${fmt(t.diff)} km</div>
-      <div class="vergoeding">💶 ${fmtEur(t.vergoeding)}</div>
+      ${t.teltMee !== false
+        ? `<div class="vergoeding" style="cursor:pointer;" onclick="toggleTeltMee(${t.id})" title="Klik om uit te sluiten van vergoeding">💶 ${fmtEur(t.vergoeding)}</div>`
+        : `<div class="vergoeding" style="background:#f7fafc;color:#a0aec0;text-decoration:line-through;cursor:pointer;" onclick="toggleTeltMee(${t.id})" title="Klik om mee te nemen in vergoeding">💶 ${fmtEur(t.vergoeding)}</div>`}
       <div style="font-size:0.68rem;color:#276749;white-space:nowrap;">🌿 ${co2ForTrip(t)} kg CO₂</div>
     </div>
     <button class="btn-sm btn-edit-sm" onclick="openEditTrip(${t.id})" style="flex-shrink:0;" title="Bewerken">✏️</button>
@@ -1260,7 +1277,7 @@ function renderSettings() {
   </div>
   <div class="form-card">
     <h2>💶 Betalingsoverzicht</h2>
-    <p style="font-size:0.82rem;color:#718096;margin-bottom:14px;">Elke zondag verschijnt automatisch een popup met het totaalbedrag per bestuurder op basis van gecheckte ritten. Je kunt het ook handmatig openen.</p>
+    <p style="font-size:0.82rem;color:#718096;margin-bottom:14px;">Elke zondag verschijnt automatisch een popup met het totaalbedrag per bestuurder. Sla het overzicht handmatig op via de knop in de popup, of open het op elk moment hieronder.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-primary" style="flex:1;" onclick="toonBetalingOverzicht()">💶 Huidig overzicht</button>
       <button class="btn btn-ghost" style="flex:1;" onclick="toonBetalingHistorie()">📋 Alle overzichten</button>
@@ -1353,19 +1370,25 @@ function renderSettings() {
 
   // ── Categorieën ──
   const catRows = state.categories.map(cat => `
-    <div class="settings-row" style="gap:8px;">
+    <div class="settings-row" style="gap:8px;flex-wrap:wrap;">
       <input type="text" value="${cat.icon}" onchange="updateCat('${cat.id}','icon',this.value)"
         style="width:48px;text-align:center;font-size:1.2rem;padding:6px;">
       <input type="text" value="${cat.label}" onchange="updateCat('${cat.id}','label',this.value)"
-        style="flex:1;font-weight:600;">
+        style="flex:1;min-width:80px;font-weight:600;">
       <input type="color" value="${cat.color}" onchange="updateCat('${cat.id}','color',this.value)"
         title="Achtergrondkleur" style="width:36px;height:36px;padding:2px;border:1.5px solid #e2e8f0;border-radius:6px;cursor:pointer;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;color:#4a5568;text-transform:none;letter-spacing:0;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" ${cat.vergoeding !== false ? 'checked' : ''} onchange="updateCat('${cat.id}','vergoeding',this.checked);pushToFirebase()"
+          style="width:16px;height:16px;accent-color:#2b6cb0;">
+        Meetellen in vergoeding
+      </label>
       ${cat.id !== 'prive' && cat.id !== 'werk' ? `<button class="btn-sm btn-danger-sm" onclick="removeCat('${cat.id}')">🗑 Verwijder</button>` : '<span style="font-size:0.72rem;color:#a0aec0;">Standaard</span>'}
     </div>`).join('');
 
   const catsSection = `
   <div class="form-card">
     <h2>🏷️ Categorieën</h2>
+    <p style="font-size:0.78rem;color:#a0aec0;margin-bottom:12px;">💡 Zet "Meetellen in vergoeding" uit voor een categorie om ritten in die categorie standaard uit te sluiten van betalingen. Per individuele rit kun je dit ook aanpassen via het vergoedingsbedrag in de rittenlijst (klik erop).</p>
     ${catRows}
     <hr class="divider">
     <button class="btn btn-ghost btn-block" onclick="addCat()">➕ Categorie toevoegen</button>
@@ -1976,6 +1999,42 @@ function bouwBetalingInhoud(perBestuurder, totaalAlles) {
     </div>`;
 }
 
+function slaHuidigOverzichtOp() {
+  const gecheckt = state.trips.filter(t => t.checked && t.teltMee !== false);
+  if (gecheckt.length === 0) { alert('Geen gecheckte ritten met vergoeding om op te slaan.'); return; }
+
+  const perBestuurder = state.drivers.map(d => {
+    const ritten = gecheckt.filter(t => t.driverId === d.id);
+    const totaal = ritten.reduce((a,t)=>a+t.vergoeding, 0);
+    return { driver: d, ritten: ritten.length, totaal, km: ritten.reduce((a,t)=>a+t.diff,0) };
+  }).filter(r => r.totaal > 0);
+
+  if (perBestuurder.length === 0) { alert('Geen vergoedingen om op te slaan.'); return; }
+
+  const nu = new Date();
+  const weekInfo = getWeekInfo(nu);
+  const totaalAlles = perBestuurder.reduce((a,r)=>a+r.totaal,0);
+
+  const historie = JSON.parse(localStorage.getItem('betaling_historie') || '[]');
+  historie.unshift({
+    weekNr: weekInfo.weekNr,
+    jaar: weekInfo.jaar,
+    label: weekInfo.label,
+    datum: nu.toISOString().split('T')[0],
+    perBestuurder: perBestuurder.map(r => ({
+      naam: r.driver.emoji+' '+r.driver.name,
+      ritten: r.ritten,
+      km: r.km,
+      totaal: r.totaal
+    })),
+    totaalAlles,
+  });
+  localStorage.setItem('betaling_historie', JSON.stringify(historie.slice(0, 104)));
+
+  alert(`✅ Overzicht opgeslagen voor ${weekInfo.label}`);
+}
+window.slaHuidigOverzichtOp = slaHuidigOverzichtOp;
+
 function checkZondagBetaling() {
   const nu = new Date();
   const dag = nu.getDay(); // 0 = zondag
@@ -1984,7 +2043,7 @@ function checkZondagBetaling() {
   const sleutel = 'betaling_getoond_' + nu.toISOString().split('T')[0];
   if (localStorage.getItem(sleutel)) return;
 
-  const gecheckt = state.trips.filter(t => t.checked);
+  const gecheckt = state.trips.filter(t => t.checked && t.teltMee !== false);
   if (gecheckt.length === 0) return;
 
   const perBestuurder = state.drivers.map(d => {
@@ -2003,8 +2062,7 @@ function checkZondagBetaling() {
   document.getElementById('betaling-content').innerHTML = bouwBetalingInhoud(perBestuurder, totaalAlles);
   document.getElementById('betaling-overlay').style.display = 'flex';
 
-  // Sla op in historie
-  slaBetalingOp(weekInfo, perBestuurder, totaalAlles);
+  // Niet meer automatisch opslaan — gebruiker doet dit handmatig
   localStorage.setItem(sleutel, '1');
 }
 window.checkZondagBetaling = checkZondagBetaling;
@@ -2030,8 +2088,8 @@ function sluitBetalingPopup() {
 window.sluitBetalingPopup = sluitBetalingPopup;
 
 function toonBetalingOverzicht() {
-  const gecheckt = state.trips.filter(t => t.checked);
-  if (gecheckt.length === 0) { alert('Geen gecheckte ritten gevonden.'); return; }
+  const gecheckt = state.trips.filter(t => t.checked && t.teltMee !== false);
+  if (gecheckt.length === 0) { alert('Geen gecheckte ritten met vergoeding gevonden.'); return; }
 
   const perBestuurder = state.drivers.map(d => {
     const ritten = gecheckt.filter(t => t.driverId === d.id);
@@ -2057,7 +2115,7 @@ function toonBetalingHistorie() {
   const box = document.getElementById('historie-content');
 
   if (historie.length === 0) {
-    box.innerHTML = `<div class="empty-state" style="padding:20px;"><div class="es-icon">📋</div>Nog geen betalingsoverzichten opgeslagen.<br><span style="font-size:0.78rem;">Elke zondag wordt automatisch een overzicht opgeslagen.</span></div>`;
+    box.innerHTML = `<div class="empty-state" style="padding:20px;"><div class="es-icon">📋</div>Nog geen overzichten opgeslagen.<br><span style="font-size:0.78rem;">Open een betalingsoverzicht en klik op "📸 Overzicht opslaan".</span></div>`;
   } else {
     box.innerHTML = historie.map(h => `
       <div style="border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;">
