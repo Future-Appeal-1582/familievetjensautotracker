@@ -1615,7 +1615,6 @@ function renderStatistieken() {
 
   // ── Totalen samenvatting ──
   // Grafiek data
-  const maandenKort = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
   const kmPerMaand = Array(12).fill(0);
   const vergPerMaand = Array(12).fill(0);
   state.trips.filter(t => parseInt(t.date.split('-')[0]) === state.statYear).forEach(t => {
