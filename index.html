@@ -1707,7 +1707,68 @@ function renderStatistieken() {
     </div>
   </div>`;
 
-  const allStats = periodSelector + summary + carTable + driverTable + driverCarTable + grafiekSection + funStats;
+  // ── Per categorie ──
+  const catRows = state.categories.map(cat => {
+    const ct = trips.filter(t => t.goal === cat.id);
+    if (ct.length === 0) return null;
+    const km   = ct.reduce((a,t)=>a+t.diff, 0);
+    const verg = ct.reduce((a,t)=>a+t.vergoeding, 0);
+    const co2  = ct.reduce((a,t)=>a+co2ForTrip(t), 0).toFixed(1);
+    const pct  = totalKm > 0 ? Math.round(km/totalKm*100) : 0;
+
+    // Meest actieve bestuurder voor deze categorie
+    const topDriver = [...state.drivers].sort((a,b) =>
+      ct.filter(t=>t.driverId===b.id).reduce((s,t)=>s+t.diff,0) -
+      ct.filter(t=>t.driverId===a.id).reduce((s,t)=>s+t.diff,0)
+    )[0];
+    const topDriverKm = topDriver ? ct.filter(t=>t.driverId===topDriver.id).reduce((s,t)=>s+t.diff,0) : 0;
+
+    // Meest gebruikte auto voor deze categorie
+    const topCar = [...state.cars].sort((a,b) =>
+      ct.filter(t=>t.carId===b.id).reduce((s,t)=>s+t.diff,0) -
+      ct.filter(t=>t.carId===a.id).reduce((s,t)=>s+t.diff,0)
+    )[0];
+    const topCarKm = topCar ? ct.filter(t=>t.carId===topCar.id).reduce((s,t)=>s+t.diff,0) : 0;
+
+    // Per bestuurder
+    const perDriver = state.drivers.map(d => {
+      const dKm = ct.filter(t=>t.driverId===d.id).reduce((a,t)=>a+t.diff,0);
+      return dKm > 0 ? `<span style="font-size:0.75rem;background:#f7fafc;padding:2px 8px;border-radius:999px;border:1px solid #e2e8f0;">${d.emoji} ${d.name}: ${fmt(dKm)} km</span>` : '';
+    }).filter(Boolean).join(' ');
+
+    // Per auto
+    const perAuto = state.cars.map(c => {
+      const cKm = ct.filter(t=>t.carId===c.id).reduce((a,t)=>a+t.diff,0);
+      return cKm > 0 ? `<span style="font-size:0.75rem;background:#f7fafc;padding:2px 8px;border-radius:999px;border:1px solid #e2e8f0;">${c.icon} ${c.name}: ${fmt(cKm)} km</span>` : '';
+    }).filter(Boolean).join(' ');
+
+    return `<div style="background:#f7fafc;border-radius:10px;padding:14px 16px;margin-bottom:12px;border-left:4px solid ${cat.color || '#e2e8f0'};">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <span style="font-size:1.1rem;background:${cat.color};color:${cat.textColor};padding:3px 12px;border-radius:999px;font-weight:700;">${cat.icon} ${cat.label}</span>
+        <span style="font-size:0.82rem;font-weight:700;color:#2d3748;">${fmt(km)} km</span>
+        <span style="font-size:0.82rem;color:#718096;">${ct.length} rit${ct.length!==1?'ten':''}</span>
+        <span style="font-size:0.82rem;color:#744210;background:#fefcbf;padding:1px 8px;border-radius:999px;">${fmtEur(verg)}</span>
+        <span style="font-size:0.82rem;color:#276749;">🌿 ${co2} kg CO₂</span>
+        <span style="font-size:0.78rem;color:#718096;margin-left:auto;">${pct}% van totaal</span>
+      </div>
+      <div style="margin-bottom:6px;">
+        <div style="font-size:0.7rem;color:#a0aec0;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Per bestuurder</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${perDriver || '<span style="color:#a0aec0;font-size:0.78rem;">—</span>'}</div>
+      </div>
+      <div>
+        <div style="font-size:0.7rem;color:#a0aec0;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Per auto</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${perAuto || '<span style="color:#a0aec0;font-size:0.78rem;">—</span>'}</div>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  const catTable = catRows ? `
+  <div class="stat-section">
+    <h3>🏷️ Per categorie</h3>
+    ${catRows}
+  </div>` : '';
+
+  const allStats = periodSelector + summary + carTable + driverTable + driverCarTable + catTable + grafiekSection + funStats;
 
   // Teken grafieken na render
   setTimeout(() => {
