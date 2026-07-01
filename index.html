@@ -348,7 +348,7 @@
     .overview-cards-row .form-card { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; padding: 12px !important; }
     .overview-cards-row .oc-icon { font-size: 1.3rem !important; }
     .overview-cards-row .section-title { font-size: 0.62rem !important; }
-    .overview-cards-row .oc-value { font-size: 1rem !important; }
+    .overview-cards-row .oc-value { font-size: 1rem !important; flex-direction: column !important; align-items: flex-start !important; gap: 4px !important; }
     .overview-cards-row .oc-badge span { font-size: 0.66rem !important; padding: 2px 7px !important; }
   }
 
@@ -597,6 +597,7 @@ const state = {
     notitie: '',
     status: 'concept',        // 'concept' | 'ingediend' | 'uitbetaald'
   },
+  declBuilderOpen: false,
 };
 
 // Default data for first run
@@ -2862,6 +2863,12 @@ function toggleDeclBuilderCat(catId) {
 }
 window.toggleDeclBuilderCat = toggleDeclBuilderCat;
 
+function toggleDeclBuilderOpen() {
+  state.declBuilderOpen = !state.declBuilderOpen;
+  render();
+}
+window.toggleDeclBuilderOpen = toggleDeclBuilderOpen;
+
 function renderDeclaratieBuilder() {
   const b = state.declBuilder;
   const f = declBuilderFilteredTrips();
@@ -2899,10 +2906,11 @@ function renderDeclaratieBuilder() {
 
   return `
   <div class="form-card" style="margin-bottom:16px;">
-    <div class="section-title" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-      🧾 Declaratie maken <span style="font-weight:500;color:var(--txt3);font-size:0.72rem;">(ook met terugwerkende kracht)</span>
+    <div class="section-title" style="margin-bottom:${state.declBuilderOpen?'10px':'0'};display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleDeclBuilderOpen()">
+      <span>🧾 Declaratie maken <span style="font-weight:500;color:var(--txt3);font-size:0.72rem;">(ook met terugwerkende kracht)</span></span>
+      <span style="color:var(--txt3);font-size:0.85rem;transition:transform 0.2s;transform:rotate(${state.declBuilderOpen?'180':'0'}deg);">▼</span>
     </div>
-
+    <div style="display:${state.declBuilderOpen?'block':'none'};">
     <label style="font-size:0.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:0.04em;">Categorieën</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px;">
       ${catChips}
@@ -2947,6 +2955,7 @@ function renderDeclaratieBuilder() {
         <button class="btn btn-sm btn-primary" onclick="bewaarDeclaratie()">💾 Opslaan als declaratie</button>
         <button class="btn btn-sm btn-ghost" onclick="toonDeclaratieHistorie()">📋 Opgeslagen declaraties</button>
       </div>
+    </div>
     </div>
   </div>`;
 }
